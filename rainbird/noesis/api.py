@@ -20,6 +20,8 @@ DEFAULT_CONFIG = {
     "adapter_path": None,
     "validate_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
     "rainbird_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+    "preprocess_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+    "use_preprocess": False,
     "use_validate": True,
     "use_rainbird": False,
     "temperature": 0.9,
@@ -64,6 +66,20 @@ class Noesis:
         """
         # Create a new pipeline
         pipeline = Pipeline()
+
+        # Add PREPROCESS step if enabled
+        if self.config["use_preprocess"]:
+            pipeline.add_step(
+                LLMStep(
+                    model_path=self.config["preprocess_model"],
+                    prompt_file="preprocess.prompt",
+                    generate_kwargs={
+                        "verbose": self.config["verbose"],
+                        "temp": self.config["temperature"],
+                        "max_tokens": self.config["max_tokens"]
+                    }
+                )
+            )
 
         # Add NOESIS step
         pipeline.add_step(

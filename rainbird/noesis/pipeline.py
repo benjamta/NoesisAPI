@@ -78,10 +78,7 @@ class LLMStep(PipelineStep):
             raise ValueError(f"Prompt file not found: {prompt_file}")
         
         # Load model
-        if(adapter_path):
-            self.model, self.tokenizer = load(model_path, adapter_path=adapter_path)
-        else:
-            self.model, self.tokenizer = load(model_path)
+        self.model, self.tokenizer = load(model_path, adapter_path=adapter_path)
     
     def process(self, input_text: str) -> str:
         """

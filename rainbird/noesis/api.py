@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 # Default configuration values
 DEFAULT_CONFIG = {
     "noesis_model": "../models/noesis-fused-modelv0.1",
+    "adapter_path": None,
     "validate_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
     "rainbird_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
     "use_validate": True,
@@ -63,13 +64,13 @@ class Noesis:
         """
         # Create a new pipeline
         pipeline = Pipeline()
-        
+
         # Add NOESIS step
         pipeline.add_step(
             LLMStep(
                 model_path=self.config["noesis_model"],
                 prompt_file="noesis_base.prompt",
-                adapter_path="adapters",
+                adapter_path=self.config["adapter_path"],
                 generate_kwargs={
                     "verbose": self.config["verbose"],
                     "temp": self.config["temperature"],

@@ -23,12 +23,12 @@ logging.basicConfig(
 )
 
 def ben_test():
-    """Demonstrate using custom configuration options."""
     print("\n=== Running Example ===")
     
     # Define custom configuration
     config = {
         "noesis_model": "./models/noesis-base-0.3",
+        "adapter_path": "./adapters",
         "use_validate": False,
         "use_rainbird": False,
         "graph_name_template": "Noesis API Test 1",

@@ -6,12 +6,16 @@ This module provides the base classes for building modular processing pipelines.
 
 # Standard library imports
 import os
+import logging
 from typing import Dict, Any, Optional
 from abc import ABC, abstractmethod
 from pathlib import Path
 
 # Third-party imports
 from mlx_lm import generate, load
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Constants
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -63,6 +67,8 @@ class LLMStep(PipelineStep):
             "temp": 0.9,
             "max_tokens": 10000
         }
+        self.model = None
+        self.tokenizer = None
         
         # Load prompt
         try:
@@ -76,9 +82,21 @@ class LLMStep(PipelineStep):
                 self.system_prompt = f.read()
         except FileNotFoundError:
             raise ValueError(f"Prompt file not found: {prompt_file}")
-        
-        # Load model
-        self.model, self.tokenizer = load(model_path, adapter_path=adapter_path)
+    
+    def _load_model(self):
+        """Load the model and tokenizer if not already loaded."""
+        if self.model is None:
+            logger.info(f"Loading model: {self.model_path}")
+            self.model, self.tokenizer = load(self.model_path, adapter_path=self.adapter_path)
+            logger.info(f"Model loaded: {self.model_path}")
+    
+    def _unload_model(self):
+        """Unload the model and tokenizer to free memory."""
+        if self.model is not None:
+            logger.info(f"Unloading model: {self.model_path}")
+            self.model = None
+            self.tokenizer = None
+            logger.info(f"Model unloaded: {self.model_path}")
     
     def process(self, input_text: str) -> str:
         """
@@ -90,26 +108,33 @@ class LLMStep(PipelineStep):
         Returns:
             Generated text from the LLM
         """
-        # Initialize message history
-        messages = [
-            {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": input_text}
-        ]
-        
-        # Format prompt
-        formatted_prompt = self.tokenizer.apply_chat_template(
-            messages, tokenize=False, add_generation_prompt=True
-        )
-        
-        # Generate response
-        result = generate(
-            self.model, 
-            self.tokenizer, 
-            prompt=formatted_prompt, 
-            **self.generate_kwargs
-        )
-        
-        return result.strip()
+        try:
+            # Load model if needed
+            self._load_model()
+            
+            # Initialize message history
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": input_text}
+            ]
+            
+            # Format prompt
+            formatted_prompt = self.tokenizer.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+            
+            # Generate response
+            result = generate(
+                self.model, 
+                self.tokenizer, 
+                prompt=formatted_prompt, 
+                **self.generate_kwargs
+            )
+            
+            return result.strip()
+        finally:
+            # Always unload model after processing
+            self._unload_model()
     
     def name(self) -> str:
         """Return the name of this pipeline step."""

@@ -50,6 +50,8 @@ class RainbirdStep(PipelineStep):
         self.model_path = model_path
         self.max_retries = max_retries
         self.graph_name_template = graph_name_template
+        self.model = None
+        self.tokenizer = None
         
         # Load prompt
         try:
@@ -67,11 +69,6 @@ class RainbirdStep(PipelineStep):
         except FileNotFoundError:
             raise ValueError(f"Error prompt file not found: {error_prompt_file}")
         
-        # Load model for error correction
-        logger.info(f"Loading model for error correction: {model_path}")
-        self.model, self.tokenizer = load(model_path)
-        logger.info(f"Model loaded: {model_path}")
-        
         # Setup API headers
         api_key = os.getenv('RAINBIRD_API_KEY')
         if not api_key:
@@ -83,6 +80,21 @@ class RainbirdStep(PipelineStep):
                 'Version': 'v1',
                 'Content-Type': 'application/json'
             }
+    
+    def _load_model(self):
+        """Load the model and tokenizer if not already loaded."""
+        if self.model is None:
+            logger.info(f"Loading model for error correction: {self.model_path}")
+            self.model, self.tokenizer = load(self.model_path)
+            logger.info(f"Model loaded: {self.model_path}")
+    
+    def _unload_model(self):
+        """Unload the model and tokenizer to free memory."""
+        if self.model is not None:
+            logger.info(f"Unloading model: {self.model_path}")
+            self.model = None
+            self.tokenizer = None
+            logger.info(f"Model unloaded: {self.model_path}")
     
     def clean_xml(self, text: str) -> str:
         """
@@ -157,85 +169,92 @@ class RainbirdStep(PipelineStep):
         Returns:
             Dictionary with the API response and any error correction attempts
         """
-        # Generate a unique request ID
-        request_id = str(uuid.uuid4())[:8]
-        
-        # Clean XML if needed
-        xml = self.clean_xml(input_xml)
-        
-        # Send to Rainbird API
-        api_response = self.send_to_rainbird(xml, request_id)
-        
-        # Track all attempts
-        attempts = [{"xml": xml, "error": api_response.get('error')}]
-        
-        # Initialize conversation history for error correction
-        messages = [
-            {"role": "system", "content": self.error_prompt},
-            {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
-        ]
-        
-        # If there's an error and retries are enabled, try to fix it
-        retry_count = 0
-        while 'error' in api_response and retry_count < self.max_retries:
-            logger.info(f"Request {request_id} error: {api_response['error']}")
+        try:
+            # Generate a unique request ID
+            request_id = str(uuid.uuid4())[:8]
             
-            # Add error response to conversation
-            error_message = f"""
+            # Clean XML if needed
+            xml = self.clean_xml(input_xml)
+            
+            # Send to Rainbird API
+            api_response = self.send_to_rainbird(xml, request_id)
+            
+            # Track all attempts
+            attempts = [{"xml": xml, "error": api_response.get('error')}]
+            
+            # If there's an error and retries are enabled, try to fix it
+            retry_count = 0
+            while 'error' in api_response and retry_count < self.max_retries:
+                logger.info(f"Request {request_id} error: {api_response['error']}")
+                
+                # Load model if needed for error correction
+                self._load_model()
+                
+                # Initialize conversation history for error correction
+                messages = [
+                    {"role": "system", "content": self.error_prompt},
+                    {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
+                ]
+                
+                # Add error response to conversation
+                error_message = f"""
 The previous XML resulted in this error:
 {api_response['error']}
 
 Please provide corrected XML that addresses this error. 
 Just provide the corrected XML, no other text.
 """
-            messages.append({"role": "user", "content": error_message})
+                messages.append({"role": "user", "content": error_message})
+                
+                formatted_fix_prompt = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+                
+                # Generate fixed XML
+                fixed_xml = generate(
+                    self.model, 
+                    self.tokenizer,
+                    prompt=formatted_fix_prompt,
+                    verbose=False,
+                    max_tokens=2000
+                )
+                
+                fixed_xml = self.clean_xml(fixed_xml.strip())
+                
+                # Add assistant's response to history
+                messages.append({"role": "assistant", "content": fixed_xml})
+                
+                # Try API again with fixed XML
+                api_response = self.send_to_rainbird(
+                    fixed_xml,
+                    f"{request_id}_fix_{retry_count + 1}"
+                )
+                
+                # Check if this error is the same as any previous attempt
+                current_error = api_response.get('error')
+                if current_error and any(attempt['error'] == current_error for attempt in attempts):
+                    logger.warning(f"Request {request_id} got repeated error, stopping retries: {current_error}")
+                    break
+                
+                # Track this attempt
+                attempts.append({"xml": fixed_xml, "error": current_error})
+                
+                if 'error' in api_response:
+                    logger.warning(f"Request {request_id} error fixing (attempt {retry_count + 1}): {api_response['error']}")
+                
+                xml = fixed_xml
+                retry_count += 1
             
-            formatted_fix_prompt = self.tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
+            result = {
+                "generated_xml": xml,
+                "api_response": api_response,
+                "attempts": attempts
+            }
             
-            # Generate fixed XML
-            fixed_xml = generate(
-                self.model, 
-                self.tokenizer,
-                prompt=formatted_fix_prompt,
-                verbose=False,
-                max_tokens=2000
-            )
-            
-            fixed_xml = self.clean_xml(fixed_xml.strip())
-            
-            # Add assistant's response to history
-            messages.append({"role": "assistant", "content": fixed_xml})
-            
-            # Try API again with fixed XML
-            api_response = self.send_to_rainbird(
-                fixed_xml,
-                f"{request_id}_fix_{retry_count + 1}"
-            )
-            
-            # Check if this error is the same as any previous attempt
-            current_error = api_response.get('error')
-            if current_error and any(attempt['error'] == current_error for attempt in attempts):
-                logger.warning(f"Request {request_id} got repeated error, stopping retries: {current_error}")
-                break
-            
-            # Track this attempt
-            attempts.append({"xml": fixed_xml, "error": current_error})
-            
-            if 'error' in api_response:
-                logger.warning(f"Request {request_id} error fixing (attempt {retry_count + 1}): {api_response['error']}")
-            
-            xml = fixed_xml
-            retry_count += 1
-        
-        result = {
-            "generated_xml": xml,
-            "api_response": api_response,
-            "attempts": attempts
-        }
-        
-        return result
+            return result
+        finally:
+            # Always unload model after processing
+            self._unload_model()
     
     def name(self) -> str:
         """Return the name of this pipeline step."""

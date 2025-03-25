@@ -7,7 +7,8 @@ import os
 import sys
 import logging
 import argparse
-from PyPDF2 import PdfReader
+import pdfplumber
+from collections import defaultdict
 
 # Add the rainbird directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'rainbird'))
@@ -16,18 +17,41 @@ from rainbird import Noesis
 
 # Configure logging
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
 def extract_text_from_pdf(pdf_path):
-    """Extract text from a PDF file."""
+    """Extract text from a PDF file while preserving formatting."""
     try:
-        reader = PdfReader(pdf_path)
-        text = ""
-        for page in reader.pages:
-            text += page.extract_text() + "\n"
-        return text.strip()
+        text_content = []
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                # Extract text with layout preservation
+                text = page.extract_text(x_tolerance=3, y_tolerance=3, layout=True)
+                
+                # Extract tables if present
+                tables = page.extract_tables()
+                if tables:
+                    for table in tables:
+                        # Convert table to formatted text
+                        table_text = []
+                        for row in table:
+                            # Filter out None values and join with tabs
+                            row_text = '\t'.join(str(cell) if cell is not None else '' for cell in row)
+                            table_text.append(row_text)
+                        text += '\n' + '\n'.join(table_text) + '\n'
+                
+                text_content.append(text)
+        
+        # Join all pages with clear separation
+        full_text = '\n\n'.join(text_content)
+        
+        # Clean up the text
+        full_text = full_text.replace('\n\n\n', '\n\n')  # Remove excessive newlines
+        full_text = full_text.replace('\t\t', '\t')      # Remove excessive tabs
+        
+        return full_text.strip()
     except Exception as e:
         logging.error(f"Error extracting text from PDF: {e}")
         sys.exit(1)

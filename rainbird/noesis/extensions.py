@@ -276,6 +276,11 @@ Just provide the corrected XML, no other text.
             response.raise_for_status()
             
             result = response.json()
+            print("1 ********>>>>>")
+            print(self.clean_xml(result['content'][0]['text'].strip()))
+            print("2 ********>>>>>")            
+            print(result['content'][0]['text'].strip())
+
             return self.clean_xml(result['content'][0]['text'].strip())
             
         except requests.exceptions.RequestException as e:

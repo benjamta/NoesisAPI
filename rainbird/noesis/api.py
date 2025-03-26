@@ -114,7 +114,20 @@ class Noesis:
                     model_path=self.config["validate_model"],
                     model_type=self.config["validate_model_type"],
                     api_key=self.config["validate_api_key"],
-                    prompt_file="validate.prompt",
+                    prompt_file="validate_stage_1.prompt",
+                    generate_kwargs={
+                        "verbose": self.config["verbose"],
+                        "temp": self.config["temperature"],
+                        "max_tokens": self.config["max_tokens"]
+                    }
+                )
+            )
+            pipeline.add_step(
+                LLMStep(
+                    model_path=self.config["validate_model"],
+                    model_type=self.config["validate_model_type"],
+                    api_key=self.config["validate_api_key"],
+                    prompt_file="validate_stage_2.prompt",
                     generate_kwargs={
                         "verbose": self.config["verbose"],
                         "temp": self.config["temperature"],

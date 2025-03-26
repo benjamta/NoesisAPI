@@ -227,8 +227,8 @@ Just provide the corrected XML, no other text.
     
     def _generate_anthropic_correction(self, xml: str, error_message: str) -> str:
         """Generate error correction using Anthropic API."""
+        # Prepare user messages
         messages = [
-            {"role": "system", "content": self.error_prompt},
             {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
         ]
         
@@ -243,20 +243,48 @@ Just provide the corrected XML, no other text.
         
         payload = {
             "model": self.anthropic_model,
+            "system": self.error_prompt,  # System prompt as top-level parameter
             "messages": messages,
             "temperature": 0.9,
             "max_tokens": 2000
         }
         
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers=self.anthropic_headers,
-            json=payload
-        )
-        response.raise_for_status()
+        # Add debug logging
+        print("\nAnthropic API Request:")
+        print("-" * 50)
+        print(f"Model: {self.anthropic_model}")
+        print(f"System Prompt: {self.error_prompt}")
+        print(f"Messages: {messages}")
+        print(f"Headers: {self.anthropic_headers}")
+        print("-" * 50)
         
-        result = response.json()
-        return self.clean_xml(result['content'][0]['text'].strip())
+        try:
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=self.anthropic_headers,
+                json=payload
+            )
+            
+            # Add response debug logging
+            print("\nAnthropic API Response:")
+            print("-" * 50)
+            print(f"Status Code: {response.status_code}")
+            print(f"Response Headers: {response.headers}")
+            print(f"Response Body: {response.text}")
+            print("-" * 50)
+            
+            response.raise_for_status()
+            
+            result = response.json()
+            return self.clean_xml(result['content'][0]['text'].strip())
+            
+        except requests.exceptions.RequestException as e:
+            print(f"\nError making Anthropic API request: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                print(f"Response Status: {e.response.status_code}")
+                print(f"Response Headers: {e.response.headers}")
+                print(f"Response Body: {e.response.text}")
+            raise
     
     def process(self, input_xml: str) -> Dict[str, Any]:
         """

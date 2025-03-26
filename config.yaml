@@ -1,0 +1,33 @@
+# Noesis Pipeline Configuration
+
+# Model configurations for each pipeline step
+models:
+  noesis:
+    type: local  # local or anthropic
+    path: models/noesis-3.1-8b  # Path for local model or name for Anthropic model
+    adapter_path: ./adapters  # Optional adapter path for local model
+
+  preprocess:
+    type: anthropic  # local or anthropic
+    anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
+
+  validate:
+    type: anthropic  # local or anthropic
+    anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
+
+  rainbird:
+    type: anthropic  # local or anthropic
+    anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
+    graph_name_template: "Noesis API Claude Validator 1"
+
+# Pipeline settings
+pipeline:
+  use_validate: true
+  use_preprocess: true
+  use_rainbird: true
+
+# Generation settings
+generation:
+  temperature: 0.9
+  max_tokens: 4000
+  verbose: true 

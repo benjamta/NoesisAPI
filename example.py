@@ -7,9 +7,11 @@ import os
 import sys
 import logging
 import argparse
+import yaml
 import pdfplumber
 from collections import defaultdict
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables from .env file
 load_dotenv()
@@ -24,6 +26,15 @@ logging.basicConfig(
     level=logging.WARNING,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+def load_config(config_path):
+    """Load configuration from YAML file."""
+    try:
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        logging.error(f"Error loading config file: {e}")
+        sys.exit(1)
 
 def extract_text_from_pdf(pdf_path):
     """Extract text from a PDF file while preserving formatting."""
@@ -62,59 +73,156 @@ def extract_text_from_pdf(pdf_path):
 
 def process_text(text, config):
     """Process text through the Noesis pipeline."""
+    # Add debug logging
+    print("\nPipeline Configuration:")
+    print("-" * 50)
+    for key, value in config.items():
+        print(f"{key}: {value}")
+    print("-" * 50)
+    
     pipeline = Noesis(config=config)
     return pipeline.process(text)
+
+def get_model_config(model_name, args, config):
+    """Get model configuration with command line overrides."""
+    model_config = config['models'][model_name].copy()
+    
+    # Add debug logging
+    print(f"\n{model_name} Model Configuration:")
+    print("-" * 50)
+    print(f"Base config: {model_config}")
+    
+    # Apply command line overrides if provided
+    if hasattr(args, f'{model_name}_model') and getattr(args, f'{model_name}_model') is not None:
+        model_config['path'] = getattr(args, f'{model_name}_model')
+    if hasattr(args, f'{model_name}_type') and getattr(args, f'{model_name}_type') is not None:
+        model_config['type'] = getattr(args, f'{model_name}_type')
+    if hasattr(args, f'{model_name}_anthropic_model') and getattr(args, f'{model_name}_anthropic_model') is not None:
+        model_config['anthropic_model'] = getattr(args, f'{model_name}_anthropic_model')
+    if hasattr(args, f'{model_name}_adapter_path') and getattr(args, f'{model_name}_adapter_path') is not None:
+        model_config['adapter_path'] = getattr(args, f'{model_name}_adapter_path')
+    
+    print(f"After overrides: {model_config}")
+    print("-" * 50)
+    
+    return model_config
 
 def main():
     parser = argparse.ArgumentParser(description='Process PDF files through the Rainbird API')
     parser.add_argument('pdf_file', help='Path to the PDF file to process')
-    parser.add_argument('--model', default="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
-                      help='Model to use for processing (default: mlx-community/Meta-Llama-3-8B-Instruct-4bit)')
-    parser.add_argument('--model-type', choices=['local', 'anthropic'], default='local',
-                      help='Type of model to use (default: local)')
-    parser.add_argument('--anthropic-model', default='claude-3-opus-20240229',
-                      help='Anthropic model to use when model-type is anthropic (default: claude-3-opus-20240229)')
+    parser.add_argument('--config', default='config.yaml',
+                      help='Path to configuration file (default: config.yaml)')
+    
+    # Model configuration arguments for each step
+    for step in ['noesis', 'preprocess', 'validate', 'rainbird']:
+        parser.add_argument(f'--{step}-model',
+                          help=f'Override {step} model path/name from config')
+        parser.add_argument(f'--{step}-type', choices=['local', 'anthropic'],
+                          help=f'Override {step} model type from config')
+        parser.add_argument(f'--{step}-anthropic-model',
+                          help=f'Override {step} Anthropic model name from config')
+        parser.add_argument(f'--{step}-adapter-path',
+                          help=f'Override {step} adapter path from config')
+    
+    # API key arguments
     parser.add_argument('--anthropic-api-key',
                       help='Anthropic API key (if not set, will try to get from ANTHROPIC_API_KEY environment variable)')
-    parser.add_argument('--temperature', type=float, default=0.9,
-                      help='Temperature for text generation (default: 0.9)')
-    parser.add_argument('--max-tokens', type=int, default=4000,
-                      help='Maximum number of tokens to generate (default: 4000)')
+    parser.add_argument('--rainbird-anthropic-api-key',
+                      help='Anthropic API key for Rainbird error correction (if different from main API key)')
+    
+    # Generation settings
+    parser.add_argument('--temperature', type=float,
+                      help='Override temperature from config')
+    parser.add_argument('--max-tokens', type=int,
+                      help='Override max tokens from config')
+    
     args = parser.parse_args()
 
-    # Get API key from environment or command line
-    api_key = args.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
-    if not api_key:
-        print("Error: Anthropic API key is required. Please provide it using --anthropic-api-key or set ANTHROPIC_API_KEY environment variable.")
-        sys.exit(1)
+    # Load base configuration
+    config = load_config(args.config)
+    
+    # Add debug logging for loaded config
+    print("\nLoaded Configuration:")
+    print("-" * 50)
+    print(yaml.dump(config, default_flow_style=False))
+    print("-" * 50)
 
-    # Define configuration
-    config = {
-        "noesis_model": args.anthropic_model,
-        "noesis_model_type": 'anthropic',
-        "noesis_api_key": api_key,  # Use the validated API key
-        "adapter_path": None,
-        "validate_model": args.anthropic_model,
-        "validate_model_type": 'anthropic',
-        "validate_api_key": api_key,  # Use the validated API key
-        "preprocess_model": args.anthropic_model,
-        "preprocess_model_type": 'anthropic',
-        "preprocess_api_key": api_key,  # Use the validated API key
-        "use_validate": True,
-        "use_preprocess": True,
-        "use_rainbird": False,
-        "graph_name_template": "Noesis API Calude Validator 1",
-        "temperature": args.temperature,
-        "max_tokens": args.max_tokens,
-        "verbose": True
+    # Get model configurations with overrides
+    noesis_config = get_model_config('noesis', args, config)
+    preprocess_config = get_model_config('preprocess', args, config)
+    validate_config = get_model_config('validate', args, config)
+    rainbird_config = get_model_config('rainbird', args, config)
+
+    # Override generation settings
+    if args.temperature is not None:
+        config['generation']['temperature'] = args.temperature
+    if args.max_tokens is not None:
+        config['generation']['max_tokens'] = args.max_tokens
+
+    # Get API keys from environment or command line
+    main_api_key = args.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
+    rainbird_api_key = args.rainbird_anthropic_api_key or main_api_key
+
+    # Validate API keys for each step that uses Anthropic
+    for step, step_config in [
+        ('noesis', noesis_config),
+        ('preprocess', preprocess_config),
+        ('validate', validate_config),
+        ('rainbird', rainbird_config)
+    ]:
+        if step_config['type'] == 'anthropic' and not main_api_key:
+            print(f"Error: Anthropic API key is required for {step} step. Please provide it using --anthropic-api-key or set ANTHROPIC_API_KEY environment variable.")
+            sys.exit(1)
+
+    # Convert config to pipeline format
+    pipeline_config = {
+        # Noesis step
+        "noesis_model": noesis_config['path'] if noesis_config['type'] == 'local' else noesis_config['anthropic_model'],
+        "noesis_model_type": noesis_config['type'],
+        "noesis_api_key": main_api_key,
+        "adapter_path": noesis_config['adapter_path'],
+        
+        # Preprocess step
+        "preprocess_model": preprocess_config['path'] if preprocess_config['type'] == 'local' else preprocess_config['anthropic_model'],
+        "preprocess_model_type": preprocess_config['type'],
+        "preprocess_api_key": main_api_key,
+        
+        # Validate step
+        "validate_model": validate_config['path'] if validate_config['type'] == 'local' else validate_config['anthropic_model'],
+        "validate_model_type": validate_config['type'],
+        "validate_api_key": main_api_key,
+        
+        # Rainbird step
+        "use_rainbird": config['pipeline']['use_rainbird'],
+        "rainbird_model_type": rainbird_config['type'],
+        "rainbird_anthropic_model": rainbird_config['anthropic_model'],
+        "rainbird_anthropic_api_key": rainbird_api_key,
+        "graph_name_template": rainbird_config['graph_name_template'],
+        
+        # Pipeline settings
+        "use_validate": config['pipeline']['use_validate'],
+        "use_preprocess": config['pipeline']['use_preprocess'],
+        
+        # Generation settings
+        "temperature": config['generation']['temperature'],
+        "max_tokens": config['generation']['max_tokens'],
+        "verbose": config['generation']['verbose']
     }
+
+    # Add debug logging for final pipeline config
+    print("\nFinal Pipeline Configuration:")
+    print("-" * 50)
+    for key, value in pipeline_config.items():
+        print(f"{key}: {value}")
+    print("-" * 50)
+
     # Extract text from PDF
-    print(f"Processing PDF file: {args.pdf_file}")
+    print(f"\nProcessing PDF file: {args.pdf_file}")
     text = extract_text_from_pdf(args.pdf_file)
     
     # Process the text
     print("\nProcessing text through pipeline...")
-    result = process_text(text, config)
+    result = process_text(text, pipeline_config)
     
     # Print results
     print("\nResults:")

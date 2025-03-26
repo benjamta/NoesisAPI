@@ -36,20 +36,28 @@ class RainbirdStep(PipelineStep):
                 model_path: str, 
                 error_prompt_file: str, 
                 max_retries: int = 3, 
-                graph_name_template: str = "request-{request_id}"):
+                graph_name_template: str = "request-{request_id}",
+                model_type: str = "local",  # "local" or "anthropic"
+                anthropic_model: str = "claude-3-opus-20240229",
+                api_key: str = None):
         """
         Initialize the Rainbird processing step.
         
         Args:
-            model_path: Path to the LLM model for error correction
+            model_path: Path to the LLM model for error correction (for local models)
             error_prompt_file: Path to the error correction prompt file
             max_retries: Maximum number of retries for API errors
             graph_name_template: Template string for naming the Rainbird graph. 
                                Use {request_id} as a placeholder for the request ID.
+            model_type: Type of model to use for error correction ("local" or "anthropic")
+            anthropic_model: Name of the Anthropic model to use (if model_type is "anthropic")
+            api_key: API key for Anthropic (if None, will try to get from environment)
         """
         self.model_path = model_path
         self.max_retries = max_retries
         self.graph_name_template = graph_name_template
+        self.model_type = model_type
+        self.anthropic_model = anthropic_model
         self.model = None
         self.tokenizer = None
         
@@ -69,16 +77,27 @@ class RainbirdStep(PipelineStep):
         except FileNotFoundError:
             raise ValueError(f"Error prompt file not found: {error_prompt_file}")
         
-        # Setup API headers
-        api_key = os.getenv('RAINBIRD_API_KEY')
-        if not api_key:
+        # Setup API headers for Rainbird
+        rainbird_api_key = os.getenv('RAINBIRD_API_KEY')
+        if not rainbird_api_key:
             logger.warning("RAINBIRD_API_KEY not set in environment variables")
             self.api_headers = {}
         else:
             self.api_headers = {
-                'X-API-Key': api_key,
+                'X-API-Key': rainbird_api_key,
                 'Version': 'v1',
                 'Content-Type': 'application/json'
+            }
+            
+        # Setup Anthropic API if needed
+        if model_type == "anthropic":
+            self.anthropic_api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
+            if not self.anthropic_api_key:
+                raise ValueError("ANTHROPIC_API_KEY not set in environment variables or provided")
+            self.anthropic_headers = {
+                'x-api-key': self.anthropic_api_key,
+                'anthropic-version': '2023-06-01',
+                'content-type': 'application/json'
             }
     
     def _load_model(self):
@@ -158,6 +177,87 @@ class RainbirdStep(PipelineStep):
                 logger.error(f"Response: {e.response.text}")
             return {"error": str(e)}
     
+    def _generate_error_correction(self, xml: str, error_message: str) -> str:
+        """
+        Generate error correction using either local model or Anthropic API.
+        
+        Args:
+            xml: The original XML that caused the error
+            error_message: The error message from Rainbird API
+            
+        Returns:
+            Corrected XML string
+        """
+        if self.model_type == "local":
+            return self._generate_local_correction(xml, error_message)
+        else:  # anthropic
+            return self._generate_anthropic_correction(xml, error_message)
+    
+    def _generate_local_correction(self, xml: str, error_message: str) -> str:
+        """Generate error correction using local model."""
+        self._load_model()
+        
+        messages = [
+            {"role": "system", "content": self.error_prompt},
+            {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
+        ]
+        
+        error_message = f"""
+The previous XML resulted in this error:
+{error_message}
+
+Please provide corrected XML that addresses this error. 
+Just provide the corrected XML, no other text.
+"""
+        messages.append({"role": "user", "content": error_message})
+        
+        formatted_fix_prompt = self.tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        
+        fixed_xml = generate(
+            self.model, 
+            self.tokenizer,
+            prompt=formatted_fix_prompt,
+            verbose=False,
+            max_tokens=2000
+        )
+        
+        return self.clean_xml(fixed_xml.strip())
+    
+    def _generate_anthropic_correction(self, xml: str, error_message: str) -> str:
+        """Generate error correction using Anthropic API."""
+        messages = [
+            {"role": "system", "content": self.error_prompt},
+            {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
+        ]
+        
+        error_message = f"""
+The previous XML resulted in this error:
+{error_message}
+
+Please provide corrected XML that addresses this error. 
+Just provide the corrected XML, no other text.
+"""
+        messages.append({"role": "user", "content": error_message})
+        
+        payload = {
+            "model": self.anthropic_model,
+            "messages": messages,
+            "temperature": 0.9,
+            "max_tokens": 2000
+        }
+        
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers=self.anthropic_headers,
+            json=payload
+        )
+        response.raise_for_status()
+        
+        result = response.json()
+        return self.clean_xml(result['content'][0]['text'].strip())
+    
     def process(self, input_xml: str) -> Dict[str, Any]:
         """
         Process the input XML by sending it to the Rainbird API,
@@ -187,42 +287,8 @@ class RainbirdStep(PipelineStep):
             while 'error' in api_response and retry_count < self.max_retries:
                 logger.info(f"Request {request_id} error: {api_response['error']}")
                 
-                # Load model if needed for error correction
-                self._load_model()
-                
-                # Initialize conversation history for error correction
-                messages = [
-                    {"role": "system", "content": self.error_prompt},
-                    {"role": "user", "content": f"Here is my XML:\n\n{xml}"}
-                ]
-                
-                # Add error response to conversation
-                error_message = f"""
-The previous XML resulted in this error:
-{api_response['error']}
-
-Please provide corrected XML that addresses this error. 
-Just provide the corrected XML, no other text.
-"""
-                messages.append({"role": "user", "content": error_message})
-                
-                formatted_fix_prompt = self.tokenizer.apply_chat_template(
-                    messages, tokenize=False, add_generation_prompt=True
-                )
-                
-                # Generate fixed XML
-                fixed_xml = generate(
-                    self.model, 
-                    self.tokenizer,
-                    prompt=formatted_fix_prompt,
-                    verbose=False,
-                    max_tokens=2000
-                )
-                
-                fixed_xml = self.clean_xml(fixed_xml.strip())
-                
-                # Add assistant's response to history
-                messages.append({"role": "assistant", "content": fixed_xml})
+                # Generate fixed XML using either local model or Anthropic
+                fixed_xml = self._generate_error_correction(xml, api_response['error'])
                 
                 # Try API again with fixed XML
                 api_response = self.send_to_rainbird(
@@ -253,8 +319,9 @@ Just provide the corrected XML, no other text.
             
             return result
         finally:
-            # Always unload model after processing
-            self._unload_model()
+            # Always unload model after processing if using local model
+            if self.model_type == "local":
+                self._unload_model()
     
     def name(self) -> str:
         """Return the name of this pipeline step."""

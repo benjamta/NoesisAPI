@@ -17,10 +17,18 @@ logger = logging.getLogger(__name__)
 # Default configuration values
 DEFAULT_CONFIG = {
     "noesis_model": "../models/noesis-fused-modelv0.1",
+    "noesis_model_type": "local",
+    "noesis_api_key": None,
     "adapter_path": None,
     "validate_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+    "validate_model_type": "local",
+    "validate_api_key": None,
     "rainbird_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+    "rainbird_model_type": "local",
+    "rainbird_api_key": None,
     "preprocess_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+    "preprocess_model_type": "local",
+    "preprocess_api_key": None,
     "use_preprocess": False,
     "use_validate": True,
     "use_rainbird": False,
@@ -72,6 +80,8 @@ class Noesis:
             pipeline.add_step(
                 LLMStep(
                     model_path=self.config["preprocess_model"],
+                    model_type=self.config["preprocess_model_type"],
+                    api_key=self.config["preprocess_api_key"],
                     prompt_file="preprocess.prompt",
                     generate_kwargs={
                         "verbose": self.config["verbose"],
@@ -85,6 +95,8 @@ class Noesis:
         pipeline.add_step(
             LLMStep(
                 model_path=self.config["noesis_model"],
+                model_type=self.config["noesis_model_type"],
+                api_key=self.config["noesis_api_key"],
                 prompt_file="noesis_base.prompt",
                 adapter_path=self.config["adapter_path"],
                 generate_kwargs={
@@ -100,6 +112,8 @@ class Noesis:
             pipeline.add_step(
                 LLMStep(
                     model_path=self.config["validate_model"],
+                    model_type=self.config["validate_model_type"],
+                    api_key=self.config["validate_api_key"],
                     prompt_file="validate.prompt",
                     generate_kwargs={
                         "verbose": self.config["verbose"],
@@ -118,6 +132,8 @@ class Noesis:
                 pipeline.add_step(
                     RainbirdStep(
                         model_path=self.config["rainbird_model"],
+                        model_type=self.config["rainbird_model_type"],
+                        api_key=self.config["rainbird_api_key"],
                         error_prompt_file="rainbird_error.prompt",
                         max_retries=self.config["max_retries"],
                         graph_name_template=self.config["graph_name_template"]

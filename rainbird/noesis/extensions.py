@@ -10,7 +10,7 @@ import json
 import uuid
 import logging
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 # Third-party imports
 from dotenv import load_dotenv
@@ -258,4 +258,103 @@ Just provide the corrected XML, no other text.
     
     def name(self) -> str:
         """Return the name of this pipeline step."""
-        return "RainbirdAPI" 
+        return "RainbirdAPI"
+
+
+class AnthropicStep(PipelineStep):
+    """A pipeline step that processes text through Anthropic's API."""
+    
+    def __init__(self, 
+                model_name: str, 
+                prompt_file: str,
+                api_key: str = None,
+                generate_kwargs: Optional[Dict] = None):
+        """
+        Initialize the Anthropic API processing step.
+        
+        Args:
+            model_name: Name of the Anthropic model to use (e.g., 'claude-3-opus-20240229')
+            prompt_file: Path to the system prompt file
+            api_key: Anthropic API key (if None, will try to get from environment)
+            generate_kwargs: Optional kwargs for the API call
+        """
+        self.model_name = model_name
+        self.prompt_file = prompt_file
+        self.generate_kwargs = generate_kwargs or {
+            "temperature": 0.9,
+            "max_tokens": 10000
+        }
+        
+        # Load prompt
+        try:
+            # Try both absolute path and relative to prompts directory
+            if os.path.isfile(prompt_file):
+                prompt_path = prompt_file
+            else:
+                # Get path to prompts directory
+                from pathlib import Path
+                prompts_dir = Path(__file__).parent / "prompts"
+                prompt_path = os.path.join(prompts_dir, prompt_file)
+                
+            with open(prompt_path, 'r') as f:
+                self.system_prompt = f.read()
+        except FileNotFoundError:
+            raise ValueError(f"Prompt file not found: {prompt_file}")
+        
+        # Setup API key
+        self.api_key = api_key or os.getenv('ANTHROPIC_API_KEY')
+        if not self.api_key:
+            raise ValueError("ANTHROPIC_API_KEY not set in environment variables or provided")
+        
+        # Setup API headers
+        self.api_headers = {
+            'x-api-key': self.api_key,
+            'anthropic-version': '2023-06-01',
+            'content-type': 'application/json'
+        }
+    
+    def process(self, input_text: str) -> str:
+        """
+        Process the input text through Anthropic's API and return the result.
+        
+        Args:
+            input_text: The text to process
+            
+        Returns:
+            Generated text from the API
+        """
+        try:
+            # Initialize message history
+            messages = [
+                {"role": "system", "content": self.system_prompt},
+                {"role": "user", "content": input_text}
+            ]
+            
+            # Prepare API request
+            payload = {
+                "model": self.model_name,
+                "messages": messages,
+                **self.generate_kwargs
+            }
+            
+            # Make API request
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers=self.api_headers,
+                json=payload
+            )
+            response.raise_for_status()
+            
+            # Extract response
+            result = response.json()
+            return result['content'][0]['text'].strip()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Error calling Anthropic API: {str(e)}")
+            if hasattr(e, 'response') and e.response:
+                logger.error(f"Response: {e.response.text}")
+            raise
+    
+    def name(self) -> str:
+        """Return the name of this pipeline step."""
+        return f"Anthropic({self.model_name})" 

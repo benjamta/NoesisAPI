@@ -9,6 +9,10 @@ import logging
 import argparse
 import pdfplumber
 from collections import defaultdict
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add the rainbird directory to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'rainbird'))
@@ -66,27 +70,44 @@ def main():
     parser.add_argument('pdf_file', help='Path to the PDF file to process')
     parser.add_argument('--model', default="mlx-community/Meta-Llama-3-8B-Instruct-4bit",
                       help='Model to use for processing (default: mlx-community/Meta-Llama-3-8B-Instruct-4bit)')
+    parser.add_argument('--model-type', choices=['local', 'anthropic'], default='local',
+                      help='Type of model to use (default: local)')
+    parser.add_argument('--anthropic-model', default='claude-3-opus-20240229',
+                      help='Anthropic model to use when model-type is anthropic (default: claude-3-opus-20240229)')
+    parser.add_argument('--anthropic-api-key',
+                      help='Anthropic API key (if not set, will try to get from ANTHROPIC_API_KEY environment variable)')
     parser.add_argument('--temperature', type=float, default=0.9,
                       help='Temperature for text generation (default: 0.9)')
-    parser.add_argument('--max-tokens', type=int, default=10000,
-                      help='Maximum number of tokens to generate (default: 10000)')
+    parser.add_argument('--max-tokens', type=int, default=4000,
+                      help='Maximum number of tokens to generate (default: 4000)')
     args = parser.parse_args()
+
+    # Get API key from environment or command line
+    api_key = args.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
+    if not api_key:
+        print("Error: Anthropic API key is required. Please provide it using --anthropic-api-key or set ANTHROPIC_API_KEY environment variable.")
+        sys.exit(1)
 
     # Define configuration
     config = {
-        "noesis_model": args.model,
+        "noesis_model": args.anthropic_model,
+        "noesis_model_type": 'anthropic',
+        "noesis_api_key": api_key,  # Use the validated API key
         "adapter_path": None,
-        "validate_model": args.model,
-        "preprocess_model": args.model,
+        "validate_model": args.anthropic_model,
+        "validate_model_type": 'anthropic',
+        "validate_api_key": api_key,  # Use the validated API key
+        "preprocess_model": args.anthropic_model,
+        "preprocess_model_type": 'anthropic',
+        "preprocess_api_key": api_key,  # Use the validated API key
         "use_validate": True,
         "use_preprocess": True,
         "use_rainbird": False,
-        "graph_name_template": "Noesis API Test 1",
+        "graph_name_template": "Noesis API Calude Validator 1",
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
         "verbose": True
     }
-
     # Extract text from PDF
     print(f"Processing PDF file: {args.pdf_file}")
     text = extract_text_from_pdf(args.pdf_file)

@@ -2,3 +2,5 @@ adapters/
 models/
 .DS_Store
 .env
+rainbird/__pycache__/
+rainbird/noesis/__pycache__/

@@ -18,7 +18,7 @@ models:
   rainbird:
     type: anthropic  # local or anthropic
     anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
-    graph_name_template: "Noesis API Claude Validator 1"
+    graph_name_template: "Noesis Pipeline Test 1"
 
 # Pipeline settings
 pipeline:

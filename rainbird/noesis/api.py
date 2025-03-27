@@ -73,39 +73,41 @@ class Noesis:
             The configured pipeline instance.
         """
         # Create a new pipeline
-        pipeline = Pipeline()
+        pipeline = Pipeline(verbose=self.config["verbose"])
 
-        # Add PREPROCESS step if enabled
-        if self.config["use_preprocess"]:
-            pipeline.add_step(
-                LLMStep(
-                    model_path=self.config["preprocess_model"],
-                    model_type=self.config["preprocess_model_type"],
-                    api_key=self.config["preprocess_api_key"],
-                    prompt_file="preprocess.prompt",
-                    generate_kwargs={
-                        "verbose": self.config["verbose"],
-                        "temp": self.config["temperature"],
-                        "max_tokens": self.config["max_tokens"]
-                    }
-                )
-            )
+        # # Add PREPROCESS step if enabled
+        # if self.config["use_preprocess"]:
+        #     pipeline.add_step(
+        #         LLMStep(
+        #             model_path=self.config["preprocess_model"],
+        #             model_type=self.config["preprocess_model_type"],
+        #             api_key=self.config["preprocess_api_key"],
+        #             prompt_file="preprocess.prompt",
+        #             name="Preprocessing input",
+        #             generate_kwargs={
+        #                 "verbose": self.config["verbose"],
+        #                 "temp": self.config["temperature"],
+        #                 "max_tokens": self.config["max_tokens"]
+        #             }
+        #         )
+        #     )
 
-        # Add NOESIS step
-        pipeline.add_step(
-            LLMStep(
-                model_path=self.config["noesis_model"],
-                model_type=self.config["noesis_model_type"],
-                api_key=self.config["noesis_api_key"],
-                prompt_file="noesis_base.prompt",
-                adapter_path=self.config["adapter_path"],
-                generate_kwargs={
-                    "verbose": self.config["verbose"],
-                    "temp": self.config["temperature"],
-                    "max_tokens": self.config["max_tokens"]
-                }
-            )
-        )
+        # # Add NOESIS step
+        # pipeline.add_step(
+        #     LLMStep(
+        #         model_path=self.config["noesis_model"],
+        #         model_type=self.config["noesis_model_type"],
+        #         api_key=self.config["noesis_api_key"],
+        #         prompt_file="noesis_base.prompt",
+        #         adapter_path=self.config["adapter_path"],
+        #         name="Running Noesis Generation",
+        #         generate_kwargs={
+        #             "verbose": self.config["verbose"],
+        #             "temp": self.config["temperature"],
+        #             "max_tokens": self.config["max_tokens"]
+        #         }
+        #     )
+        # )
         
         # Add VALIDATE step if enabled
         if self.config["use_validate"]:
@@ -115,6 +117,7 @@ class Noesis:
                     model_type=self.config["validate_model_type"],
                     api_key=self.config["validate_api_key"],
                     prompt_file="validate_stage_1.prompt",
+                    name="Validate Stage 1",
                     generate_kwargs={
                         "verbose": self.config["verbose"],
                         "temp": self.config["temperature"],
@@ -128,6 +131,7 @@ class Noesis:
                     model_type=self.config["validate_model_type"],
                     api_key=self.config["validate_api_key"],
                     prompt_file="validate_stage_2.prompt",
+                    name="Validate Stage 2",
                     generate_kwargs={
                         "verbose": self.config["verbose"],
                         "temp": self.config["temperature"],
@@ -149,7 +153,8 @@ class Noesis:
                         api_key=self.config["rainbird_api_key"],
                         error_prompt_file="rainbird_error.prompt",
                         max_retries=self.config["max_retries"],
-                        graph_name_template=self.config["graph_name_template"]
+                        graph_name_template=self.config["graph_name_template"],
+                        name="Process through Rainbird"
                     )
                 )
             except Exception as e:

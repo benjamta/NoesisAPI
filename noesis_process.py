@@ -73,24 +73,13 @@ def extract_text_from_pdf(pdf_path):
 
 def process_text(text, config):
     """Process text through the Noesis pipeline."""
-    # Add debug logging
-    print("\nPipeline Configuration:")
-    print("-" * 50)
-    for key, value in config.items():
-        print(f"{key}: {value}")
-    print("-" * 50)
-    
+        
     pipeline = Noesis(config=config)
     return pipeline.process(text)
 
 def get_model_config(model_name, args, config):
     """Get model configuration with command line overrides."""
     model_config = config['models'][model_name].copy()
-    
-    # Add debug logging
-    print(f"\n{model_name} Model Configuration:")
-    print("-" * 50)
-    print(f"Base config: {model_config}")
     
     # Apply command line overrides if provided
     if hasattr(args, f'{model_name}_model') and getattr(args, f'{model_name}_model') is not None:
@@ -102,8 +91,6 @@ def get_model_config(model_name, args, config):
     if hasattr(args, f'{model_name}_adapter_path') and getattr(args, f'{model_name}_adapter_path') is not None:
         model_config['adapter_path'] = getattr(args, f'{model_name}_adapter_path')
     
-    print(f"After overrides: {model_config}")
-    print("-" * 50)
     
     return model_config
 
@@ -140,12 +127,6 @@ def main():
 
     # Load base configuration
     config = load_config(args.config)
-    
-    # Add debug logging for loaded config
-    print("\nLoaded Configuration:")
-    print("-" * 50)
-    print(yaml.dump(config, default_flow_style=False))
-    print("-" * 50)
 
     # Get model configurations with overrides
     noesis_config = get_model_config('noesis', args, config)
@@ -209,25 +190,36 @@ def main():
         "verbose": config['generation']['verbose']
     }
 
-    # Add debug logging for final pipeline config
-    print("\nFinal Pipeline Configuration:")
-    print("-" * 50)
-    for key, value in pipeline_config.items():
-        print(f"{key}: {value}")
-    print("-" * 50)
-
     # Extract text from PDF
     print(f"\nProcessing PDF file: {args.pdf_file}")
-    text = extract_text_from_pdf(args.pdf_file)
-    
+    # text = extract_text_from_pdf(args.pdf_file)
+
+    text = """
+<?xml version="1.0" encoding="utf-8"?>
+<rbl:kb xmlns:rbl="http://rbl.io/schema/RBLang">
+  <concept name="person" type="string"/>
+  <concept name="language" type="string"/>
+  <concept name="country" type="string"/>
+
+  <rel name="speaks" subject="person" object="language" plural="true" allowUnknown="true"/>
+  <rel name="born in" subject="person" object="country" allowUnknown="true" />
+  <rel name="national language" subject="country" object="language"/>  
+  <rel name="lives in" subject="person" object="place" allowUnknown="true" />
+
+  <relinst type="speaks" cf="80">
+    <condition rel="born in" subject="%S" object="%COUNTRY" behaviour="optional" weight="40"/>
+    <condition rel="lives in" subject="%S" object="%COUNTRY" behaviour="optional" weight="80"/>
+    <condition rel="national language" subject="%COUNTRY" object="%O"/>
+  </relinst>
+</rbl:kb>
+"""
+
     # Process the text
     print("\nProcessing text through pipeline...")
     result = process_text(text, pipeline_config)
     
     # Print results
-    print("\nResults:")
-    print("-" * 50)
-    print(result)
-
+    print(f"\nCreated Graph with KMID: {result['api_response']['kmID']}")
+    
 if __name__ == "__main__":
     main()

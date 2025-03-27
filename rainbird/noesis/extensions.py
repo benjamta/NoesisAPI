@@ -39,7 +39,8 @@ class RainbirdStep(PipelineStep):
                 graph_name_template: str = "request-{request_id}",
                 model_type: str = "local",  # "local" or "anthropic"
                 anthropic_model: str = "claude-3-opus-20240229",
-                api_key: str = None):
+                api_key: str = None,
+                name: str = None):
         """
         Initialize the Rainbird processing step.
         
@@ -52,7 +53,9 @@ class RainbirdStep(PipelineStep):
             model_type: Type of model to use for error correction ("local" or "anthropic")
             anthropic_model: Name of the Anthropic model to use (if model_type is "anthropic")
             api_key: API key for Anthropic (if None, will try to get from environment)
+            name: Optional custom name for this step
         """
+        super().__init__(name)
         self.model_path = model_path
         self.max_retries = max_retries
         self.graph_name_template = graph_name_template
@@ -249,15 +252,6 @@ Just provide the corrected XML, no other text.
             "max_tokens": 2000
         }
         
-        # Add debug logging
-        print("\nAnthropic API Request:")
-        print("-" * 50)
-        print(f"Model: {self.anthropic_model}")
-        print(f"System Prompt: {self.error_prompt}")
-        print(f"Messages: {messages}")
-        print(f"Headers: {self.anthropic_headers}")
-        print("-" * 50)
-        
         try:
             response = requests.post(
                 "https://api.anthropic.com/v1/messages",
@@ -265,21 +259,9 @@ Just provide the corrected XML, no other text.
                 json=payload
             )
             
-            # Add response debug logging
-            print("\nAnthropic API Response:")
-            print("-" * 50)
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Headers: {response.headers}")
-            print(f"Response Body: {response.text}")
-            print("-" * 50)
-            
             response.raise_for_status()
             
             result = response.json()
-            print("1 ********>>>>>")
-            print(self.clean_xml(result['content'][0]['text'].strip()))
-            print("2 ********>>>>>")            
-            print(result['content'][0]['text'].strip())
 
             return self.clean_xml(result['content'][0]['text'].strip())
             
@@ -356,8 +338,8 @@ Just provide the corrected XML, no other text.
             if self.model_type == "local":
                 self._unload_model()
     
-    def name(self) -> str:
-        """Return the name of this pipeline step."""
+    def _get_default_name(self) -> str:
+        """Return the default name for this step."""
         return "RainbirdAPI"
 
 

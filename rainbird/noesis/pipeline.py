@@ -25,6 +25,15 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 class PipelineStep(ABC):
     """Abstract base class for a step in the processing pipeline."""
     
+    def __init__(self, name: str = None):
+        """
+        Initialize a pipeline step.
+        
+        Args:
+            name: Optional custom name for this step
+        """
+        self._name = name
+    
     @abstractmethod
     def process(self, input_data: Any) -> Any:
         """
@@ -38,10 +47,26 @@ class PipelineStep(ABC):
         """
         pass
 
-    @abstractmethod
     def name(self) -> str:
-        """Return the name of this pipeline step."""
-        pass
+        """
+        Return the name of this pipeline step.
+        
+        Returns:
+            The custom name if set, otherwise the default name from _get_default_name()
+        """
+        if self._name:
+            return self._name
+        return self._get_default_name()
+    
+    def _get_default_name(self) -> str:
+        """
+        Get the default name for this step.
+        Should be implemented by subclasses.
+        
+        Returns:
+            The default name for this step
+        """
+        return self.__class__.__name__
 
 
 class LLMStep(PipelineStep):
@@ -53,7 +78,8 @@ class LLMStep(PipelineStep):
                 adapter_path: str = None,
                 model_type: str = "local",  # "local" or "anthropic"
                 api_key: str = None,
-                generate_kwargs: Optional[Dict] = None):
+                generate_kwargs: Optional[Dict] = None,
+                name: str = None):
         """
         Initialize the LLM processing step.
         
@@ -64,7 +90,9 @@ class LLMStep(PipelineStep):
             model_type: Type of model to use ("local" or "anthropic")
             api_key: API key for remote models (if None, will try to get from environment)
             generate_kwargs: Optional kwargs for the generate function
+            name: Optional custom name for this step
         """
+        super().__init__(name)
         self.model_path = model_path
         self.adapter_path = adapter_path
         self.prompt_file = prompt_file
@@ -195,11 +223,10 @@ class LLMStep(PipelineStep):
         
         # Extract response
         result = response.json()
-        print(result['content'][0]['text'].strip())
         return result['content'][0]['text'].strip()
     
-    def name(self) -> str:
-        """Return the name of this pipeline step."""
+    def _get_default_name(self) -> str:
+        """Return the default name for this step."""
         if self.model_type == "local":
             return f"LLM({os.path.basename(self.model_path)})"
         else:
@@ -209,9 +236,15 @@ class LLMStep(PipelineStep):
 class Pipeline:
     """A pipeline that processes data through a sequence of steps."""
     
-    def __init__(self):
-        """Initialize an empty pipeline."""
+    def __init__(self, verbose: bool = False):
+        """
+        Initialize an empty pipeline.
+        
+        Args:
+            verbose: Whether to print verbose logging information
+        """
         self.steps = []
+        self.verbose = verbose
     
     def add_step(self, step: PipelineStep) -> 'Pipeline':
         """
@@ -238,5 +271,7 @@ class Pipeline:
         """
         result = input_data
         for i, step in enumerate(self.steps):
+            if self.verbose:
+                print(f"Running step {i+1}: {step.name()}")
             result = step.process(result)
         return result 

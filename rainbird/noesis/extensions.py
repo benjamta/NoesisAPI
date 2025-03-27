@@ -40,6 +40,7 @@ class RainbirdStep(PipelineStep):
                 model_type: str = "local",  # "local" or "anthropic"
                 anthropic_model: str = "claude-3-opus-20240229",
                 api_key: str = None,
+                generate_kwargs: Optional[Dict] = None,
                 name: str = None):
         """
         Initialize the Rainbird processing step.
@@ -53,6 +54,7 @@ class RainbirdStep(PipelineStep):
             model_type: Type of model to use for error correction ("local" or "anthropic")
             anthropic_model: Name of the Anthropic model to use (if model_type is "anthropic")
             api_key: API key for Anthropic (if None, will try to get from environment)
+            generate_kwargs: Optional kwargs for the generate function
             name: Optional custom name for this step
         """
         super().__init__(name)
@@ -61,6 +63,11 @@ class RainbirdStep(PipelineStep):
         self.graph_name_template = graph_name_template
         self.model_type = model_type
         self.anthropic_model = anthropic_model
+        self.generate_kwargs = generate_kwargs or {
+            "verbose": False,
+            "temperature": 0.9,
+            "max_tokens": 10000
+        }
         self.model = None
         self.tokenizer = None
         
@@ -218,12 +225,16 @@ Just provide the corrected XML, no other text.
             messages, tokenize=False, add_generation_prompt=True
         )
         
+        # Map temperature to temp for MLX generate function
+        generate_params = self.generate_kwargs.copy()
+        if "temperature" in generate_params:
+            generate_params["temp"] = generate_params.pop("temperature")
+        
         fixed_xml = generate(
             self.model, 
             self.tokenizer,
             prompt=formatted_fix_prompt,
-            verbose=False,
-            max_tokens=2000
+            **generate_params
         )
         
         return self.clean_xml(fixed_xml.strip())
@@ -248,8 +259,8 @@ Just provide the corrected XML, no other text.
             "model": self.anthropic_model,
             "system": self.error_prompt,  # System prompt as top-level parameter
             "messages": messages,
-            "temperature": 0.9,
-            "max_tokens": 2000
+            "temperature": self.generate_kwargs.get("temperature", 0.9),  # Use temperature directly
+            "max_tokens": self.generate_kwargs.get("max_tokens", 10000)
         }
         
         try:
@@ -259,8 +270,12 @@ Just provide the corrected XML, no other text.
                 json=payload
             )
             
-            response.raise_for_status()
-            
+            if response.status_code != 200:
+                print(f"Debug - API Response Status: {response.status_code}")
+                print(f"Debug - API Response Headers: {response.headers}")
+                print(f"Debug - API Response Body: {response.text}")
+                response.raise_for_status()   
+                         
             result = response.json()
 
             return self.clean_xml(result['content'][0]['text'].strip())

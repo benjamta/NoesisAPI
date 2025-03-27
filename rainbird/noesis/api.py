@@ -16,27 +16,41 @@ logger = logging.getLogger(__name__)
 
 # Default configuration values
 DEFAULT_CONFIG = {
-    "noesis_model": "../models/noesis-fused-modelv0.1",
-    "noesis_model_type": "local",
-    "noesis_api_key": None,
-    "adapter_path": None,
-    "validate_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
-    "validate_model_type": "local",
-    "validate_api_key": None,
-    "rainbird_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
-    "rainbird_model_type": "local",
-    "rainbird_api_key": None,
-    "preprocess_model": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
-    "preprocess_model_type": "local",
-    "preprocess_api_key": None,
-    "use_preprocess": False,
-    "use_validate": True,
-    "use_rainbird": False,
-    "temperature": 0.9,
-    "max_tokens": 10000,
+    "models": {
+        "noesis": {
+            "type": "local",
+            "path": "../models/noesis-fused-modelv0.1",
+            "adapter_path": None,
+            "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
+        },
+        "preprocess": {
+            "type": "local",
+            "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
+        },
+        "validate": {
+            "type": "local",
+            "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
+        },
+        "rainbird": {
+            "type": "local",
+            "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
+        }
+    },
+    "pipeline": {
+        "use_preprocess": False,
+        "use_validate": True,
+        "use_rainbird": False
+    },
+    "generation": {
+        "temperature": 0.9,
+        "max_tokens": 10000,
+        "verbose": False
+    },
     "max_retries": 3,
-    "verbose": False,
-    "graph_name_template": "request-{request_id}",
+    "graph_name_template": "request-{request_id}"
 }
 
 
@@ -66,95 +80,78 @@ class Noesis:
         self.pipeline = None
     
     def configure(self) -> Pipeline:
-        """
-        Configure the pipeline based on the current settings.
+        """Configure the pipeline with the current settings."""
+        pipeline = Pipeline(verbose=self.config["generation"]["verbose"])
         
-        Returns:
-            The configured pipeline instance.
-        """
-        # Create a new pipeline
-        pipeline = Pipeline(verbose=self.config["verbose"])
-
-        # # Add PREPROCESS step if enabled
-        # if self.config["use_preprocess"]:
-        #     pipeline.add_step(
-        #         LLMStep(
-        #             model_path=self.config["preprocess_model"],
-        #             model_type=self.config["preprocess_model_type"],
-        #             api_key=self.config["preprocess_api_key"],
-        #             prompt_file="preprocess.prompt",
-        #             name="Preprocessing input",
-        #             generate_kwargs={
-        #                 "verbose": self.config["verbose"],
-        #                 "temp": self.config["temperature"],
-        #                 "max_tokens": self.config["max_tokens"]
-        #             }
-        #         )
-        #     )
-
-        # # Add NOESIS step
-        # pipeline.add_step(
-        #     LLMStep(
-        #         model_path=self.config["noesis_model"],
-        #         model_type=self.config["noesis_model_type"],
-        #         api_key=self.config["noesis_api_key"],
-        #         prompt_file="noesis_base.prompt",
-        #         adapter_path=self.config["adapter_path"],
-        #         name="Running Noesis Generation",
-        #         generate_kwargs={
-        #             "verbose": self.config["verbose"],
-        #             "temp": self.config["temperature"],
-        #             "max_tokens": self.config["max_tokens"]
-        #         }
-        #     )
-        # )
-        
-        # Add VALIDATE step if enabled
-        if self.config["use_validate"]:
+        # Add PREPROCESS step if enabled
+        if self.config["pipeline"]["use_preprocess"]:
+            preprocess_config = self.config["models"]["preprocess"]
             pipeline.add_step(
                 LLMStep(
-                    model_path=self.config["validate_model"],
-                    model_type=self.config["validate_model_type"],
-                    api_key=self.config["validate_api_key"],
+                    model_path=preprocess_config["anthropic_model"] if preprocess_config["type"] == "anthropic" else preprocess_config["path"],
+                    model_type=preprocess_config["type"],
+                    api_key=self.config.get("anthropic_api_key"),
+                    prompt_file="preprocess.prompt",
+                    name="Preprocessing input",
+                    generate_kwargs=preprocess_config["generation"]
+                )
+            )
+        
+        # Add NOESIS step
+        noesis_config = self.config["models"]["noesis"]
+        pipeline.add_step(
+            LLMStep(
+                model_path=noesis_config["anthropic_model"] if noesis_config["type"] == "anthropic" else noesis_config["path"],
+                model_type=noesis_config["type"],
+                api_key=self.config.get("anthropic_api_key"),
+                prompt_file="noesis_base.prompt",
+                adapter_path=noesis_config.get("adapter_path"),
+                name="Running Noesis Generation",
+                generate_kwargs=noesis_config["generation"]
+            )
+        )
+        
+        # Add VALIDATE step if enabled
+        if self.config["pipeline"]["use_validate"]:
+            validate_config = self.config["models"]["validate"]
+            pipeline.add_step(
+                LLMStep(
+                    model_path=validate_config["anthropic_model"] if validate_config["type"] == "anthropic" else validate_config["path"],
+                    model_type=validate_config["type"],
+                    api_key=self.config.get("anthropic_api_key"),
                     prompt_file="validate_stage_1.prompt",
                     name="Validate Stage 1",
-                    generate_kwargs={
-                        "verbose": self.config["verbose"],
-                        "temp": self.config["temperature"],
-                        "max_tokens": self.config["max_tokens"]
-                    }
+                    generate_kwargs=validate_config["generation"]
                 )
             )
             pipeline.add_step(
                 LLMStep(
-                    model_path=self.config["validate_model"],
-                    model_type=self.config["validate_model_type"],
-                    api_key=self.config["validate_api_key"],
+                    model_path=validate_config["anthropic_model"] if validate_config["type"] == "anthropic" else validate_config["path"],
+                    model_type=validate_config["type"],
+                    api_key=self.config.get("anthropic_api_key"),
                     prompt_file="validate_stage_2.prompt",
                     name="Validate Stage 2",
-                    generate_kwargs={
-                        "verbose": self.config["verbose"],
-                        "temp": self.config["temperature"],
-                        "max_tokens": self.config["max_tokens"]
-                    }
+                    generate_kwargs=validate_config["generation"]
                 )
             )
         
         # Add Rainbird step if enabled
-        if self.config["use_rainbird"]:
+        if self.config["pipeline"]["use_rainbird"]:
             # Import here to avoid circular imports
             from .extensions import RainbirdStep
             
             try:
+                rainbird_config = self.config["models"]["rainbird"]
                 pipeline.add_step(
                     RainbirdStep(
-                        model_path=self.config["rainbird_model"],
-                        model_type=self.config["rainbird_model_type"],
-                        api_key=self.config["rainbird_api_key"],
+                        model_path=rainbird_config["anthropic_model"] if rainbird_config["type"] == "anthropic" else rainbird_config["path"],
+                        model_type=rainbird_config["type"],
+                        api_key=self.config.get("anthropic_api_key"),
                         error_prompt_file="rainbird_error.prompt",
                         max_retries=self.config["max_retries"],
-                        graph_name_template=self.config["graph_name_template"],
-                        name="Process through Rainbird"
+                        graph_name_template=rainbird_config.get("graph_name_template", self.config["graph_name_template"]),
+                        name="Process through Rainbird",
+                        generate_kwargs=rainbird_config["generation"]
                     )
                 )
             except Exception as e:

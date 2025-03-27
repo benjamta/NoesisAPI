@@ -6,19 +6,31 @@ models:
     type: local  # local or anthropic
     path: models/noesis-3.1-8b  # Path for local model or name for Anthropic model
     adapter_path: ./adapters  # Optional adapter path for local model
+    generation:
+      temperature: 0.9
+      max_tokens: 10000
 
   preprocess:
     type: anthropic  # local or anthropic
     anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
+    generation:
+      temperature: 0.0
+      max_tokens: 10000
 
   validate:
     type: anthropic  # local or anthropic
     anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
+    generation:
+      temperature: 0.0
+      max_tokens: 10000
 
   rainbird:
     type: anthropic  # local or anthropic
     anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
     graph_name_template: "Noesis Pipeline Test 1"
+    generation:
+      temperature: 0.0
+      max_tokens: 10000
 
 # Pipeline settings
 pipeline:
@@ -26,8 +38,8 @@ pipeline:
   use_preprocess: true
   use_rainbird: true
 
-# Generation settings
+# Global generation settings (used as fallback)
 generation:
-  temperature: 0.9
-  max_tokens: 4000
+  temperature: 0.0
+  max_tokens: 10000
   verbose: true 

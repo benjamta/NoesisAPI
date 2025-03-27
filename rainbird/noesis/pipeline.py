@@ -100,7 +100,7 @@ class LLMStep(PipelineStep):
         self.api_key = api_key
         self.generate_kwargs = generate_kwargs or {
             "verbose": False,
-            "temp": 0.9,
+            "temperature": 0.9,
             "max_tokens": 10000
         }
         self.model = None
@@ -185,12 +185,17 @@ class LLMStep(PipelineStep):
             messages, tokenize=False, add_generation_prompt=True
         )
         
+        # Map temperature to temp for MLX generate function
+        generate_params = self.generate_kwargs.copy()
+        if "temperature" in generate_params:
+            generate_params["temp"] = generate_params.pop("temperature")
+        
         # Generate response
         result = generate(
             self.model, 
             self.tokenizer, 
             prompt=formatted_prompt, 
-            **self.generate_kwargs
+            **generate_params
         )
         
         return result.strip()
@@ -199,12 +204,12 @@ class LLMStep(PipelineStep):
         """Process text using Anthropic API."""
         # Prepare API request
         payload = {
-            "model": self.model_path,
+            "model": self.model_path,  # This is the Anthropic model name
             "system": self.system_prompt,  # System prompt as top-level parameter
             "messages": [
                 {"role": "user", "content": input_text}  # Only user message in messages array
             ],
-            "temperature": self.generate_kwargs.get("temp", 0.9),  # Map temp to temperature
+            "temperature": self.generate_kwargs.get("temperature", 0.9),
             "max_tokens": self.generate_kwargs.get("max_tokens", 10000)
         }
         
@@ -223,6 +228,7 @@ class LLMStep(PipelineStep):
         
         # Extract response
         result = response.json()
+        print(result['content'][0]['text'].strip())
         return result['content'][0]['text'].strip()
     
     def _get_default_name(self) -> str:

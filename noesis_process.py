@@ -91,6 +91,16 @@ def get_model_config(model_name, args, config):
     if hasattr(args, f'{model_name}_adapter_path') and getattr(args, f'{model_name}_adapter_path') is not None:
         model_config['adapter_path'] = getattr(args, f'{model_name}_adapter_path')
     
+    # Get generation parameters from model config or global config
+    generation_config = model_config.get('generation', {})
+    global_generation = config.get('generation', {})
+    
+    # Use model-specific generation params if available, otherwise fall back to global
+    model_config['generation'] = {
+        'temperature': generation_config.get('temperature', global_generation.get('temperature', 0.9)),
+        'max_tokens': generation_config.get('max_tokens', global_generation.get('max_tokens', 4000)),
+        'verbose': global_generation.get('verbose', False)
+    }
     
     return model_config
 
@@ -110,18 +120,16 @@ def main():
                           help=f'Override {step} Anthropic model name from config')
         parser.add_argument(f'--{step}-adapter-path',
                           help=f'Override {step} adapter path from config')
+        parser.add_argument(f'--{step}-temperature', type=float,
+                          help=f'Override temperature for {step} step')
+        parser.add_argument(f'--{step}-max-tokens', type=int,
+                          help=f'Override max tokens for {step} step')
     
     # API key arguments
     parser.add_argument('--anthropic-api-key',
                       help='Anthropic API key (if not set, will try to get from ANTHROPIC_API_KEY environment variable)')
     parser.add_argument('--rainbird-anthropic-api-key',
                       help='Anthropic API key for Rainbird error correction (if different from main API key)')
-    
-    # Generation settings
-    parser.add_argument('--temperature', type=float,
-                      help='Override temperature from config')
-    parser.add_argument('--max-tokens', type=int,
-                      help='Override max tokens from config')
     
     args = parser.parse_args()
 
@@ -133,12 +141,6 @@ def main():
     preprocess_config = get_model_config('preprocess', args, config)
     validate_config = get_model_config('validate', args, config)
     rainbird_config = get_model_config('rainbird', args, config)
-
-    # Override generation settings
-    if args.temperature is not None:
-        config['generation']['temperature'] = args.temperature
-    if args.max_tokens is not None:
-        config['generation']['max_tokens'] = args.max_tokens
 
     # Get API keys from environment or command line
     main_api_key = args.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
@@ -157,37 +159,17 @@ def main():
 
     # Convert config to pipeline format
     pipeline_config = {
-        # Noesis step
-        "noesis_model": noesis_config['path'] if noesis_config['type'] == 'local' else noesis_config['anthropic_model'],
-        "noesis_model_type": noesis_config['type'],
-        "noesis_api_key": main_api_key,
-        "adapter_path": noesis_config['adapter_path'],
-        
-        # Preprocess step
-        "preprocess_model": preprocess_config['path'] if preprocess_config['type'] == 'local' else preprocess_config['anthropic_model'],
-        "preprocess_model_type": preprocess_config['type'],
-        "preprocess_api_key": main_api_key,
-        
-        # Validate step
-        "validate_model": validate_config['path'] if validate_config['type'] == 'local' else validate_config['anthropic_model'],
-        "validate_model_type": validate_config['type'],
-        "validate_api_key": main_api_key,
-        
-        # Rainbird step
-        "use_rainbird": config['pipeline']['use_rainbird'],
-        "rainbird_model_type": rainbird_config['type'],
-        "rainbird_anthropic_model": rainbird_config['anthropic_model'],
-        "rainbird_anthropic_api_key": rainbird_api_key,
-        "graph_name_template": rainbird_config['graph_name_template'],
-        
-        # Pipeline settings
-        "use_validate": config['pipeline']['use_validate'],
-        "use_preprocess": config['pipeline']['use_preprocess'],
-        
-        # Generation settings
-        "temperature": config['generation']['temperature'],
-        "max_tokens": config['generation']['max_tokens'],
-        "verbose": config['generation']['verbose']
+        "models": {
+            "noesis": noesis_config,
+            "preprocess": preprocess_config,
+            "validate": validate_config,
+            "rainbird": rainbird_config
+        },
+        "pipeline": config['pipeline'],
+        "generation": config['generation'],
+        "max_retries": config.get('max_retries', 3),
+        "graph_name_template": config.get('graph_name_template', "request-{request_id}"),
+        "anthropic_api_key": main_api_key
     }
 
     # Extract text from PDF

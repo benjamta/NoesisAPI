@@ -4,3 +4,4 @@ models/
 .env
 rainbird/__pycache__/
 rainbird/noesis/__pycache__/
+*.pdf

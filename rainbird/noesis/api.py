@@ -144,8 +144,9 @@ class Noesis:
                 rainbird_config = self.config["models"]["rainbird"]
                 pipeline.add_step(
                     RainbirdStep(
-                        model_path=rainbird_config["anthropic_model"] if rainbird_config["type"] == "anthropic" else rainbird_config["path"],
+                        model_path=rainbird_config["path"] if rainbird_config["type"] == "local" else None,
                         model_type=rainbird_config["type"],
+                        anthropic_model=rainbird_config["anthropic_model"] if rainbird_config["type"] == "anthropic" else None,
                         api_key=self.config.get("anthropic_api_key"),
                         error_prompt_file="rainbird_error.prompt",
                         max_retries=self.config["max_retries"],

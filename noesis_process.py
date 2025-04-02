@@ -130,6 +130,8 @@ def main():
                       help='Anthropic API key (if not set, will try to get from ANTHROPIC_API_KEY environment variable)')
     parser.add_argument('--rainbird-anthropic-api-key',
                       help='Anthropic API key for Rainbird error correction (if different from main API key)')
+    parser.add_argument('--graph-name',
+                      help='Override the graph name template with a specific name')
     
     args = parser.parse_args()
 
@@ -168,7 +170,7 @@ def main():
         "pipeline": config['pipeline'],
         "generation": config['generation'],
         "max_retries": config.get('max_retries', 3),
-        "graph_name_template": config.get('graph_name_template', "request-{request_id}"),
+        "graph_name_template": args.graph_name if args.graph_name else config.get('graph_name_template', "request-{request_id}"),
         "anthropic_api_key": main_api_key
     }
 

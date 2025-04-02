@@ -174,27 +174,7 @@ def main():
 
     # Extract text from PDF
     print(f"\nProcessing PDF file: {args.pdf_file}")
-    # text = extract_text_from_pdf(args.pdf_file)
-
-    text = """
-<?xml version="1.0" encoding="utf-8"?>
-<rbl:kb xmlns:rbl="http://rbl.io/schema/RBLang">
-  <concept name="person" type="string"/>
-  <concept name="language" type="string"/>
-  <concept name="country" type="string"/>
-
-  <rel name="speaks" subject="person" object="language" plural="true" allowUnknown="true"/>
-  <rel name="born in" subject="person" object="country" allowUnknown="true" />
-  <rel name="national language" subject="country" object="language"/>  
-  <rel name="lives in" subject="person" object="place" allowUnknown="true" />
-
-  <relinst type="speaks" cf="80">
-    <condition rel="born in" subject="%S" object="%COUNTRY" behaviour="optional" weight="40"/>
-    <condition rel="lives in" subject="%S" object="%COUNTRY" behaviour="optional" weight="80"/>
-    <condition rel="national language" subject="%COUNTRY" object="%O"/>
-  </relinst>
-</rbl:kb>
-"""
+    text = extract_text_from_pdf(args.pdf_file)
 
     # Process the text
     print("\nProcessing text through pipeline...")

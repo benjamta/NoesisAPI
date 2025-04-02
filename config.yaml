@@ -4,10 +4,10 @@
 models:
   noesis:
     type: local  # local or anthropic
-    path: models/noesis-3.1-8b  # Path for local model or name for Anthropic model
+    path: models/noesis-base-0.3  # Path for local model or name for Anthropic model
     adapter_path: ./adapters  # Optional adapter path for local model
     generation:
-      temperature: 0.9
+      temperature: 0.65
       max_tokens: 10000
 
   preprocess:
@@ -27,7 +27,7 @@ models:
   rainbird:
     type: anthropic  # local or anthropic
     anthropic_model: claude-3-7-sonnet-20250219  # Only used if type is anthropic
-    graph_name_template: "Noesis Pipeline Test 1"
+    graph_name_template: "Noesis FinCrime Test 1"
     generation:
       temperature: 0.0
       max_tokens: 10000

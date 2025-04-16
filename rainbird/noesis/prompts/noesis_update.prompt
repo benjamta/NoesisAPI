@@ -6,10 +6,4 @@ Your task is to update an existing model taking account of the expertise you're 
 3. Update any existing concepts/relationships that are expanded or clarified by the new expertise
 4. Ensure all rules (relinst tags with conditions) are preserved and updated as needed
 
-Current Model:
-<graph_contents>
-
-Expertise to incorporate:
-<expertise_contents>
-
 You must just output your updated model, starting: <rbl:kb xmlns:rbl="http://rbl.io/schema/RBLang"> 

@@ -9,3 +9,5 @@ The proces you're preparing this for can't handle table, so you must not include
 Make sure your output includes *everyting* the following process will need to understand all the concepts, relationships, and rules that are represented in the information you're given. It's critical that your output *retain every facet* of the knoweldge, expertise, rules, conditions, or other relevant information you were given - but it must be in a format that make it as easy as possible to identify and process this knoweldge.
 
 Just return your prepared version of the document, ready for the next processing step, do not include any commitments or other output.
+
+You may be given a <graph to update> section. If you are you *must* reproduce that section verbatim, including the <graph to update> ahead of your processed documentation.

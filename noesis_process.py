@@ -75,17 +75,29 @@ def extract_text_from_pdf(pdf_path):
 def get_existing_graph(kmID, api_key):
     """Fetch an existing graph from the Rainbird API."""
     try:
+        # Log the API key (masked for security)
+        masked_key = api_key[:4] + '*' * (len(api_key) - 8) + api_key[-4:] if api_key else None
+        logging.debug(f"Using Rainbird API key: {masked_key}")
+        
+        # Use HTTP Basic Auth with API key as username and empty password
+        auth = (api_key, '')
         headers = {
-            'X-API-Key': api_key,
             'Version': 'v1',
             'Content-Type': 'application/json'
         }
         
-        response = requests.get(
-            f"https://api.rainbird.ai/analysis/file/{kmID}",
-            headers=headers
-        )
-        response.raise_for_status()
+        url = f"https://api.rainbird.ai/analysis/file/{kmID}"
+        logging.debug(f"Making request to: {url}")
+        logging.debug(f"Using Basic Auth with username: {masked_key}")
+        
+        response = requests.get(url, auth=auth, headers=headers)
+        
+        # Log response details if there's an error
+        if response.status_code != 200:
+            logging.error(f"API request failed with status code: {response.status_code}")
+            logging.error(f"Response headers: {response.headers}")
+            logging.error(f"Response body: {response.text}")
+            response.raise_for_status()
         
         return response.text
     except Exception as e:

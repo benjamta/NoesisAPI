@@ -111,11 +111,16 @@ def process_text(text, config, existing_graph=None):
     # If we have an existing graph, use the update prompt
     if existing_graph:
         # Replace the prompt file for the noesis step
-        pipeline.config["models"]["noesis"]["prompt_file"] = "noesis_update.prompt"
+        pipeline.config["models"]["noesis"]["prompt_file"] = "rainbird/noesis/prompts/noesis_update.prompt"
         
-        # Format the input text to include the existing graph
-        formatted_text = f"<graph_contents>\n{existing_graph}\n</graph_contents>\n\n<expertise_contents>\n{text}\n</expertise_contents>"
-        return pipeline.process(formatted_text)
+        # Load the prompt template
+        prompt_path = os.path.join(os.path.dirname(__file__), "rainbird", "noesis", "prompts", "noesis_update.prompt")
+        with open(prompt_path, 'r') as f:
+            prompt_template = f.read()
+            
+        # Format the prompt with the graph content and expertise
+        formatted_prompt = prompt_template.replace("<graph_contents>", existing_graph).replace("<expertise_contents>", text)
+        return pipeline.process(formatted_prompt)
     else:
         return pipeline.process(text)
 

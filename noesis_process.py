@@ -9,6 +9,7 @@ import logging
 import argparse
 import yaml
 import pdfplumber
+import requests
 from collections import defaultdict
 from dotenv import load_dotenv
 from pathlib import Path
@@ -71,11 +72,40 @@ def extract_text_from_pdf(pdf_path):
         logging.error(f"Error extracting text from PDF: {e}")
         sys.exit(1)
 
-def process_text(text, config):
-    """Process text through the Noesis pipeline."""
+def get_existing_graph(kmID, api_key):
+    """Fetch an existing graph from the Rainbird API."""
+    try:
+        headers = {
+            'X-API-Key': api_key,
+            'Version': 'v1',
+            'Content-Type': 'application/json'
+        }
         
+        response = requests.get(
+            f"https://api.rainbird.ai/analysis/file/{kmID}",
+            headers=headers
+        )
+        response.raise_for_status()
+        
+        return response.text
+    except Exception as e:
+        logging.error(f"Error fetching existing graph: {e}")
+        sys.exit(1)
+
+def process_text(text, config, existing_graph=None):
+    """Process text through the Noesis pipeline."""
     pipeline = Noesis(config=config)
-    return pipeline.process(text)
+    
+    # If we have an existing graph, use the update prompt
+    if existing_graph:
+        # Replace the prompt file for the noesis step
+        pipeline.config["models"]["noesis"]["prompt_file"] = "noesis_update.prompt"
+        
+        # Format the input text to include the existing graph
+        formatted_text = f"<graph_contents>\n{existing_graph}\n</graph_contents>\n\n<expertise_contents>\n{text}\n</expertise_contents>"
+        return pipeline.process(formatted_text)
+    else:
+        return pipeline.process(text)
 
 def get_model_config(model_name, args, config):
     """Get model configuration with command line overrides."""
@@ -109,6 +139,7 @@ def main():
     parser.add_argument('pdf_file', help='Path to the PDF file to process')
     parser.add_argument('--config', default='config.yaml',
                       help='Path to configuration file (default: config.yaml)')
+    parser.add_argument('--kmID', help='Knowledge Map ID of graph to update (if updating an existing graph)')
     
     # Model configuration arguments for each step
     for step in ['noesis', 'preprocess', 'validate', 'rainbird']:
@@ -130,6 +161,8 @@ def main():
                       help='Anthropic API key (if not set, will try to get from ANTHROPIC_API_KEY environment variable)')
     parser.add_argument('--rainbird-anthropic-api-key',
                       help='Anthropic API key for Rainbird error correction (if different from main API key)')
+    parser.add_argument('--rainbird-api-key',
+                      help='Rainbird API key (if not set, will try to get from RAINBIRD_API_KEY environment variable)')
     parser.add_argument('--graph-name',
                       help='Override the graph name template with a specific name')
     
@@ -147,6 +180,7 @@ def main():
     # Get API keys from environment or command line
     main_api_key = args.anthropic_api_key or os.getenv('ANTHROPIC_API_KEY')
     rainbird_api_key = args.rainbird_anthropic_api_key or main_api_key
+    rainbird_api_key = args.rainbird_api_key or os.getenv('RAINBIRD_API_KEY')
 
     # Validate API keys for each step that uses Anthropic
     for step, step_config in [
@@ -178,12 +212,24 @@ def main():
     print(f"\nProcessing PDF file: {args.pdf_file}")
     text = extract_text_from_pdf(args.pdf_file)
 
+    # Get existing graph if updating
+    existing_graph = None
+    if args.kmID:
+        if not rainbird_api_key:
+            print("Error: Rainbird API key is required for updating graphs. Please provide it using --rainbird-api-key or set RAINBIRD_API_KEY environment variable.")
+            sys.exit(1)
+        print(f"\nFetching existing graph with KMID: {args.kmID}")
+        existing_graph = get_existing_graph(args.kmID, rainbird_api_key)
+
     # Process the text
     print("\nProcessing text through pipeline...")
-    result = process_text(text, pipeline_config)
+    result = process_text(text, pipeline_config, existing_graph)
     
     # Print results
-    print(f"\nCreated Graph with KMID: {result['api_response']['kmID']}")
+    if args.kmID:
+        print(f"\nUpdated Graph with KMID: {result['api_response']['kmID']}")
+    else:
+        print(f"\nCreated Graph with KMID: {result['api_response']['kmID']}")
     
 if __name__ == "__main__":
     main()

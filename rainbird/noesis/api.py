@@ -21,21 +21,25 @@ DEFAULT_CONFIG = {
             "type": "local",
             "path": "../models/noesis-fused-modelv0.1",
             "adapter_path": None,
+            "prompt_file": "noesis_base.prompt",
             "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
         },
         "preprocess": {
             "type": "local",
             "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "prompt_file": "preprocess.prompt",
             "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
         },
         "validate": {
             "type": "local",
             "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "prompt_file": "validate_stage_1.prompt",
             "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
         },
         "rainbird": {
             "type": "local",
             "path": "mlx-community/Meta-Llama-3.1-8B-Instruct-bf16",
+            "prompt_file": "rainbird_error.prompt",
             "generation": {"temperature": 0.9, "max_tokens": 10000, "verbose": False}
         }
     },
@@ -74,6 +78,17 @@ class Noesis:
         
         # Update configuration with provided options
         if config:
+            # Deep update for models to preserve prompt files
+            if "models" in config:
+                for model_name, model_config in config["models"].items():
+                    if model_name in self.config["models"]:
+                        self.config["models"][model_name].update(model_config)
+                    else:
+                        self.config["models"][model_name] = model_config
+                # Remove models from config to avoid double processing
+                del config["models"]
+            
+            # Update remaining config
             self.config.update(config)
         
         # Initialize the pipeline
@@ -91,7 +106,7 @@ class Noesis:
                     model_path=preprocess_config["anthropic_model"] if preprocess_config["type"] == "anthropic" else preprocess_config["path"],
                     model_type=preprocess_config["type"],
                     api_key=self.config.get("anthropic_api_key"),
-                    prompt_file="preprocess.prompt",
+                    prompt_file=preprocess_config.get("prompt_file", "preprocess.prompt"),
                     name="Preprocessing input",
                     generate_kwargs=preprocess_config["generation"]
                 )
@@ -104,7 +119,7 @@ class Noesis:
                 model_path=noesis_config["anthropic_model"] if noesis_config["type"] == "anthropic" else noesis_config["path"],
                 model_type=noesis_config["type"],
                 api_key=self.config.get("anthropic_api_key"),
-                prompt_file="noesis_base.prompt",
+                prompt_file=noesis_config.get("prompt_file", "noesis_base.prompt"),
                 adapter_path=noesis_config.get("adapter_path"),
                 name="Running Noesis Generation",
                 generate_kwargs=noesis_config["generation"]
@@ -119,7 +134,7 @@ class Noesis:
                     model_path=validate_config["anthropic_model"] if validate_config["type"] == "anthropic" else validate_config["path"],
                     model_type=validate_config["type"],
                     api_key=self.config.get("anthropic_api_key"),
-                    prompt_file="validate_stage_1.prompt",
+                    prompt_file=validate_config.get("prompt_file", "validate_stage_1.prompt"),
                     name="Validate Stage 1",
                     generate_kwargs=validate_config["generation"]
                 )
@@ -129,7 +144,7 @@ class Noesis:
                     model_path=validate_config["anthropic_model"] if validate_config["type"] == "anthropic" else validate_config["path"],
                     model_type=validate_config["type"],
                     api_key=self.config.get("anthropic_api_key"),
-                    prompt_file="validate_stage_2.prompt",
+                    prompt_file=validate_config.get("prompt_file", "validate_stage_2.prompt"),
                     name="Validate Stage 2",
                     generate_kwargs=validate_config["generation"]
                 )
@@ -148,7 +163,7 @@ class Noesis:
                         model_type=rainbird_config["type"],
                         anthropic_model=rainbird_config["anthropic_model"] if rainbird_config["type"] == "anthropic" else None,
                         api_key=self.config.get("anthropic_api_key"),
-                        error_prompt_file="rainbird_error.prompt",
+                        error_prompt_file=rainbird_config.get("prompt_file", "rainbird_error.prompt"),
                         max_retries=self.config["max_retries"],
                         graph_name_template=rainbird_config.get("graph_name_template", self.config["graph_name_template"]),
                         name="Process through Rainbird",
